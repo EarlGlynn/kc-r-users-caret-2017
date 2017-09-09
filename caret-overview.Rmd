@@ -1,0 +1,102 @@
+---
+title: "Caret Model Overview"
+output: html_document
+---
+
+efg, 2017-08-31
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Packages
+
+```{r, comment=NA}
+suppressMessages( library(caret) )   # getModelInfo, modelLookup
+suppressMessages( library(dplyr) )   # "%>%", select, ...
+library(xtable)  # xtable
+```
+
+## Caret Model Summary
+
+### getModelInfo
+
+```{r, comment=NA}
+names(getModelInfo())
+```
+
+### modelLookup
+
+```{r, comment=NA, results="asis"}
+modelSummary <- modelLookup()                                  %>% 
+                select(model, forReg, forClass, probModel)     %>%
+                rename(Regression=forReg,
+                       Classification=forClass,
+                       ClassProbabilities=probModel)           %>%
+                unique
+rownames(modelSummary) <- NULL  # force renumbering.  why needed?
+print(xtable(modelSummary), type="html")
+```
+
+# caret Parameter Summary
+
+```{r, comment=NA, results="asis"}
+parameterSummary <- modelLookup()                   %>% 
+                    select(model, parameter, label) 
+                
+print(xtable(parameterSummary), type="html")
+```
+
+## Information about particular models
+
+### glmnet
+
+#### Specific info
+
+```{r, comment=NA}
+getModelInfo()$glmnet$type
+```
+
+```{r, comment=NA}
+getModelInfo()$glmnet$parameters
+```
+
+#### All info about glmnet
+
+```{r, comment=NA}
+getModelInfo("glmnet")
+```
+
+### C5.0
+
+#### Specific info
+
+```{r, comment=NA}
+getModelInfo()$C5.0$type
+```
+
+```{r, comment=NA}
+getModelInfo()$C5.0$parameters
+```
+
+#### All info about C5.0
+
+```{r, comment=NA}
+getModelInfo("C5.0")
+```
+
+### J48
+
+```{r, comment=NA}
+getModelInfo("J48")
+```
+
+### M5
+
+```{r, comment=NA}
+getModelInfo("M5")
+```
+
+## Reference
+
+* [Caret Available Models](http://topepo.github.io/caret/modelList.html), Caret Github page

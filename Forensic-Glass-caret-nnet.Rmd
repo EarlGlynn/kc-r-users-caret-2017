@@ -1,0 +1,197 @@
+---
+title: "Forensic Glass:  Neural Network Classification (nnet)"
+output: html_document
+---
+
+efg, 2017-09-04
+
+[Neural Networks](https://visualstudiomagazine.com/articles/2016/11/01/using-the-r-nnet-package.aspx) using [nnet package](https://cran.r-project.org/web/packages/nnet/nnet.pdf) with [caret](http://topepo.github.io/caret/index.html).
+
+nnet provides feed-forward neural networks with a single hidden layer.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Setup
+
+```{r}
+time.1 <- Sys.time()
+```
+
+### Required packages
+
+```{r, comment=NA, message=FALSE, warning=FALSE}
+library(MASS)          # fgl data
+library(dplyr)         # select
+library(caret)         # createDataParition, nearZeroVar
+library(doParallel)    # registerDoParallel  
+library(nnet)
+```
+
+Special setup to plot neural network.  Import the plot.nnet function from Github
+```{r, comment=NA}
+library(devtools)
+source_url('https://gist.githubusercontent.com/fawda123/7471137/raw/466c1474d0a505ff044412703516c34f1a4684a5/nnet_plot_update.r')
+```
+
+### Forensic Glass Data
+
+```{r, comment=NA}
+rawData <- fgl
+dim(rawData)
+```
+
+```{r, comment=NA}
+table(rawData$type)
+prop.table( table(rawData$type) )
+```
+
+### Caret info about neural network (nnet) model
+
+```{r, comment=NA}
+getModelInfo()$nnet$type
+```
+
+```{r, comment=NA}
+getModelInfo()$nnet$parameters
+```
+
+```{r, comment=NA}
+getModelInfo()$nnet$library
+```
+
+```{r, comment=NA}
+getModelInfo()$nnet$grid
+```
+
+### Define train and test datasets
+
+```{r, comment=NA}
+set.seed(71)
+
+trainSetIndices <- createDataPartition(rawData$type, p=0.70, list=FALSE)
+
+trainSet <- rawData[ trainSetIndices, ]
+testSet  <- rawData[-trainSetIndices, ]
+```
+
+Assume dependent variable is last column of trainSet and testSet here.
+
+```{r, comment=NA}
+nrow(trainSet)
+nrow(testSet)
+```
+
+
+```{r, comment=NA}
+table(trainSet$type) 
+table(testSet$type)
+```
+
+
+```{r, comment=NA}
+prop.table( table(trainSet$type) )
+prop.table( table(testSet$type) )
+```
+
+### Setup parallel processing
+
+```{r, comment=NA}
+rCluster <- makePSOCKcluster(6)   # use 6 cores
+registerDoParallel(rCluster)  
+```
+
+## Neural Network
+
+```{r, comment=NA}
+set.seed(29)
+CVfolds   <-  5  # 5-fold cross validation (not enough data for 10 fold here)
+CVrepeats <- 10  # repeat 10 times
+
+trainControlParms <- trainControl(method = "repeatedcv",  # repeated cross validation
+                                  number  = CVfolds,    
+                                  repeats = CVrepeats,
+                                  classProbs = TRUE,        # Estimate class probabilities
+                                  summaryFunction = defaultSummary)
+
+fit <- train(type ~ ., data=trainSet,
+             preProcess = c("center", "scale"),
+             method = "nnet",
+             tuneLength = 15,                    #####
+             metric = "Kappa",                   #####
+             linout = TRUE,                      #####
+             trControl=trainControlParms)
+
+stopCluster(rCluster)
+```
+
+```{r, comment=NA}
+print(fit$finalModel)
+```
+
+```{r, comment=NA, message=FALSE, warning=FALSE, fig.width=10, fig.height=10}
+plot.nnet(fit$finalModel)
+```
+
+```{r, comment=NA}
+summary(fit$finalModel)
+```
+
+```{r, comment=NA}
+print(fit)
+```
+
+```{r, comment=NA}
+plot(fit)
+```
+
+
+### Variable Importance
+
+Unclear why cannot plot varImp
+
+```
+plot( varImp(fit), main="Variable Importance" )
+```
+
+```{r, comment=NA}
+print( varImp(fit), main="Variable Importance" )
+```
+
+### Results on Train Set (In Sample)
+
+Overly optimistic results for generalization
+
+```{r, comment=NA}
+options(width=120)
+InSample  <- predict(fit, newdata=trainSet)
+InSampleConfusion <- confusionMatrix(trainSet$type, InSample)
+print(InSampleConfusion)   
+```
+
+### Results on Test Set (Out of Sample)
+
+More realistic results on predictions with new data
+
+```{r, comment=NA}
+options(width=120)
+OutOfSample  <- predict(fit, newdata=testSet)
+confusion <- confusionMatrix(testSet$type, OutOfSample)
+print(confusion)   
+```
+
+```{r, comment=NA, echo=FALSE}
+time.2 <- Sys.time()
+processingTime <- paste("Processing time:", sprintf("%.1f",
+                        as.numeric(difftime(time.2, time.1, units="secs"))), "sec\n")
+```
+
+`r processingTime`
+`r format(time.2, "%Y-%m-%d %H:%M:%S")`   
+
+## References
+
+* [How to model a neural network through the use of caret, R](https://stackoverflow.com/questions/21622975/how-to-model-a-neural-network-through-the-use-of-caret-r), Stack Overflow, 2014.
+
+* [Visualizing neural networks in R – update](https://beckmw.wordpress.com/tag/nnet/), R is my friend blog

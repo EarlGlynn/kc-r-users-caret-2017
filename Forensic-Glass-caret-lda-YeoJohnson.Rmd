@@ -1,0 +1,250 @@
+---
+title: "Forensic Glass:  Linear Discriminant Analysis"
+output: html_document
+---
+
+efg, 2017-09-04
+
+[Linear Discriminant Analysis](https://stat.ethz.ch/R-manual/R-devel/library/MASS/html/lda.html) using [R MASS package](https://cran.r-project.org/web/packages/MASS/MASS.pdf) with [caret](http://topepo.github.io/caret/index.html).
+
+**With [YeoJohnson](https://www.stat.umn.edu/arc/yjpower.pdf) variable transformation.**
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Setup
+
+```{r}
+time.1 <- Sys.time()
+```
+
+### Required packages
+
+```{r, comment=NA, message=FALSE, warning=FALSE}
+library(MASS)          # fgl data, lda
+library(dplyr)         # select
+library(caret)         # createDataParition, nearZeroVar
+library(doParallel)    # registerDoParallel  
+```
+
+### Forensic Glass Data
+
+```{r, comment=NA}
+rawData <- fgl
+dim(rawData)
+```
+
+```{r, comment=NA}
+table(rawData$type)
+prop.table( table(rawData$type) )
+```
+
+### Caret info about linear discriminant analysis (lda) model
+
+```{r, comment=NA}
+getModelInfo()$lda$type
+```
+
+```{r, comment=NA}
+getModelInfo()$lda$parameters
+```
+
+```{r, comment=NA}
+getModelInfo()$lda$library
+```
+
+```{r, comment=NA}
+getModelInfo()$lda$grid
+```
+
+### Define train and test datasets
+
+```{r, comment=NA}
+set.seed(71)
+
+trainSetIndices <- createDataPartition(rawData$type, p=0.70, list=FALSE)
+
+trainSet <- rawData[ trainSetIndices, ]
+testSet  <- rawData[-trainSetIndices, ]
+```
+
+Assume dependent variable is last column of trainSet and testSet here.
+
+```{r, comment=NA}
+nrow(trainSet)
+nrow(testSet)
+```
+
+
+```{r, comment=NA}
+table(trainSet$type) 
+table(testSet$type)
+```
+
+
+```{r, comment=NA}
+prop.table( table(trainSet$type) )
+prop.table( table(testSet$type) )
+```
+
+#### Remove near-zero variance predictors
+
+```{r, comment=NA}
+nearZero <- nearZeroVar(trainSet, saveMetrics=TRUE)
+nearZero
+```
+Eliminate variables that have zero variance (zeroVar), or variables with near zero variance (nzv).  
+
+In this case, we'll remove any near zero variance variables.
+
+```{r, comment=NA}
+nzvCount <- sum(nearZero$nzv)
+if (nzvCount > 0)
+{
+  trainSet <- trainSet[, !nearZero$nzv]  
+  testSet  <- testSet[,  !nearZero$nzv]  # make same change to testSet
+}
+```
+
+#### Remove variables with high correlation to others
+
+```{r, comment=NA}
+HIGH_CORRELATION_CUTOFF <- 0.90
+corMatrix <- trainSet %>% select(-type) %>% cor   # create correlation matrix
+
+corHigh <- findCorrelation(corMatrix, HIGH_CORRELATION_CUTOFF)
+if (length(corHigh) > 0)
+{
+  cat("Removing highly-correlated variable(s): ", names(trainSet)[corHigh])
+  trainSet <- trainSet[, -corHigh]  
+  testSet  <- testSet[,  -corHigh]  
+}
+```
+
+#### Remove variables with linear dependencies
+
+QR decomposition is used to determine if the matrix is full rank.  Sets of columns that are involved in the dependencies are identified.
+
+```{r, comment=NA}
+linearCombos <- findLinearCombos(trainSet %>% select(-type))
+if (length(linearCombos$remove) > 0)
+{
+  cat("Removing linear dependencies: ", names(trainSet)[linearCombos$remove])
+  trainSet <- trainSet[, -linearCombos$remove]  
+  testSet  <- testSet[,  -linearCombos$remove]  
+}
+```
+
+#### YeoJohnson Variable Transformation
+
+Supports raw values that are zero and negative.  Let's apply to all variables here.
+```{r, comment=NA}
+summary(trainSet)
+```
+
+```{r, comment=NA}
+preprocessParms <- preProcess(trainSet %>% select(-type), method=c("center", "scale", "YeoJohnson"))
+print(preprocessParms)
+```
+
+```{r, comment=NA}
+transformedTrainSet <- predict(preprocessParms, trainSet %>% select(-type))
+transformedTrainSet <- cbind(transformedTrainSet, type=trainSet$type)
+summary(transformedTrainSet)
+```
+
+```{r, comment=NA}
+transformedTestSet <- predict(preprocessParms, testSet %>% select(-type))
+transformedTestSet <- cbind(transformedTestSet, type=testSet$type)
+summary(transformedTestSet)
+```
+
+
+### Setup parallel processing
+
+```{r, comment=NA}
+rCluster <- makePSOCKcluster(6)   # use 6 cores
+registerDoParallel(rCluster)  
+```
+
+## Linear Discriminant Analysis with YeoJohnson transformation
+
+```{r, comment=NA}
+set.seed(29)
+CVfolds   <-  5  # 5-fold cross validation (not enough data for 10 fold here)
+CVrepeats <- 10  # repeat 10 times
+
+# Used createMultiFolds to study 
+indexFolds <- createMultiFolds(trainSet$type, CVfolds, CVrepeats)  # for repeated CV
+
+trainControlParms <- trainControl(method  = "repeatedcv",  # repeated cross validation
+                                  number  = CVfolds,    
+                                  repeats = CVrepeats,  
+                                  index   = indexFolds,
+                                  classProbs = TRUE,        # Estimate class probabilities
+                                  summaryFunction = defaultSummary)
+
+fit <- train(type ~ ., data=transformedTrainSet,
+             method = "lda",
+             metric = "Kappa",
+             trControl = trainControlParms)
+
+stopCluster(rCluster)
+```
+
+```{r, comment=NA}
+print(fit$finalModel)
+```
+
+```{r, comment=NA}
+print(fit)
+```
+
+### Variable Importance
+
+See ?varImp
+
+```{r, comment=NA, fig.width=8, fig.height=6}
+plot( varImp(fit), main="Variable Importance" )
+```
+
+### Results on Train Set (In Sample)
+
+Overly optimistic results for generalization
+
+```{r, comment=NA}
+options(width=120)
+InSample  <- predict(fit, newdata=transformedTrainSet)
+InSampleConfusion <- confusionMatrix(transformedTrainSet$type, InSample)
+print(InSampleConfusion)   
+```
+
+### Results on Test Set (Out of Sample)
+
+More realistic results on predictions with new data
+
+```{r, comment=NA}
+options(width=120)
+OutOfSample  <- predict(fit, newdata=transformedTestSet)
+confusion <- confusionMatrix(transformedTestSet$type, OutOfSample)
+print(confusion)   
+```
+
+```{r, comment=NA, echo=FALSE}
+time.2 <- Sys.time()
+processingTime <- paste("Processing time:", sprintf("%.1f",
+                        as.numeric(difftime(time.2, time.1, units="secs"))), "sec\n")
+```
+
+`r processingTime`
+`r format(time.2, "%Y-%m-%d %H:%M:%S")`   
+
+## References
+
+* [Feature Selection with the Caret R Package](https://machinelearningmastery.com/feature-selection-with-the-caret-r-package/), Jason Brownlee, 2014.
+
+* [How to Evaluate Machine Learning Algorithms with R](https://machinelearningmastery.com/evaluate-machine-learning-algorithms-with-r/), Jason Brownlee, 2016.
+
+* [Get Your Data Ready For Machine Learning in R with Pre-Processing](https://machinelearningmastery.com/pre-process-your-dataset-in-r/), Jason Brownlee, 2016.
+

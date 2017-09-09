@@ -1,0 +1,175 @@
+---
+title: "Forensic Glass:  k Nearest Neighbors"
+output: html_document
+---
+
+efg, 2017-09-06
+
+[k Nearest Neighbors](https://www.analyticsvidhya.com/blog/2015/08/learning-concept-knn-algorithms-programming/) with [caret](http://topepo.github.io/caret/index.html).
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Setup
+
+```{r}
+time.1 <- Sys.time()
+```
+
+### Required packages
+
+```{r, comment=NA, message=FALSE, warning=FALSE}
+library(MASS)          # fgl data
+library(dplyr)         # select
+library(caret)         # createDataParition, nearZeroVar
+library(doParallel)    # registerDoParallel  
+
+```
+
+### Forensic Glass Data
+
+```{r, comment=NA}
+rawData <- fgl
+dim(rawData)
+```
+
+```{r, comment=NA}
+table(rawData$type)
+prop.table( table(rawData$type) )
+```
+
+### Caret info about knn model
+
+```{r, comment=NA}
+getModelInfo()$knn$type
+```
+
+```{r, comment=NA}
+getModelInfo()$knn$parameters
+```
+
+```{r, comment=NA}
+getModelInfo()$knn$library
+```
+
+knn is in the *class* package.
+
+```{r, comment=NA}
+getModelInfo()$knn$grid
+```
+
+### Define train and test datasets
+
+```{r, comment=NA}
+set.seed(71)
+
+trainSetIndices <- createDataPartition(rawData$type, p=0.70, list=FALSE)
+
+trainSet <- rawData[ trainSetIndices, ]
+testSet  <- rawData[-trainSetIndices, ]
+```
+
+Assume dependent variable is last column of trainSet and testSet here.
+
+```{r, comment=NA}
+nrow(trainSet)
+nrow(testSet)
+```
+
+
+```{r, comment=NA}
+table(trainSet$type) 
+table(testSet$type)
+```
+
+
+```{r, comment=NA}
+prop.table( table(trainSet$type) )
+prop.table( table(testSet$type) )
+```
+
+### Setup parallel processing
+
+```{r, comment=NA}
+rCluster <- makePSOCKcluster(6)   # use 6 cores
+registerDoParallel(rCluster)  
+```
+
+## k Nearest Neighbors
+
+```{r, comment=NA}
+set.seed(29)
+CVfolds   <-  5  # 5-fold cross validation (not enough data for 10 fold here)
+CVrepeats <- 10  # repeat 10 times
+
+trainControlParms <- trainControl(method = "repeatedcv",  # repeated cross validation
+                                  number  = CVfolds,    
+                                  repeats = CVrepeats,
+                                  classProbs = TRUE,      # Estimate class probabilities
+                                  summaryFunction = defaultSummary)
+
+fit <- train(type ~ ., data=trainSet,
+             preProcess = c("center", "scale"),
+             method = "knn",
+             metric = "Kappa",
+             tuneGrid  = expand.grid(k = c(1,3,5,7)),
+             trControl = trainControlParms)
+
+stopCluster(rCluster)
+```
+
+```{r, comment=NA}
+print(fit$finalModel)
+```
+
+```{r, comment=NA}
+summary(fit$finalModel)
+```
+
+```{r, comment=NA}
+print(fit)
+```
+
+### Variable Importance
+
+See ?varImp
+
+```{r, comment=NA, fig.width=8, fig.height=6}
+plot( varImp(fit), main="Variable Importance" )
+```
+
+### Results on Train Set (In Sample)
+
+Overly optimistic results for generalization
+
+```{r, comment=NA}
+options(width=120)
+InSample  <- predict(fit, newdata=trainSet)
+InSampleConfusion <- confusionMatrix(trainSet$type, InSample)
+print(InSampleConfusion)   
+```
+
+### Results on Test Set (Out of Sample)
+
+More realistic results on predictions with new data
+
+```{r, comment=NA}
+options(width=120)
+OutOfSample  <- predict(fit, newdata=testSet)
+confusion <- confusionMatrix(testSet$type, OutOfSample)
+print(confusion)   
+```
+
+```{r, comment=NA, echo=FALSE}
+time.2 <- Sys.time()
+processingTime <- paste("Processing time:", sprintf("%.1f",
+                        as.numeric(difftime(time.2, time.1, units="secs"))), "sec\n")
+```
+
+`r processingTime`
+`r format(time.2, "%Y-%m-%d %H:%M:%S")`   
+
+## References
+
+* [Best way to learn kNN Algorithm using R Programming](https://www.analyticsvidhya.com/blog/2015/08/learning-concept-knn-algorithms-programming/), Payel Roy Choudhury on Analytics Vidhya blog, 2015.

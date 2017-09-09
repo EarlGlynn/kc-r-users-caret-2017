@@ -1,0 +1,51 @@
+---
+title: "Shiny Caret Lab"
+subtitle:  "Shiny app interactivity with caret models"
+author: "Earl F Glynn"
+date: "Friday, July 25, 2014"
+output: ioslides_presentation
+---
+
+## Shiny Caret Lab
+
+Project for Coursera [**Developing Data Products**](https://class.coursera.org/devdataprod-003) class
+
+Problem:  Classify Poorly-Segmented (PS) vs. Well-Segmented (WS) objects in cell screening images.
+
+[Link to online shiny application](http://earlglynn.shinyapps.io/ShinyCaret/)
+
+![Caret Lab](figures/ShinyCaret.png)
+
+- [Image processing segmentation problem](http://www.ncbi.nlm.nih.gov/pmc/articles/PMC2080643/)
+- [Shiny interactive web apps](http://shiny.rstudio.com/)
+- [Caret package machine learning models](http://caret.r-forge.r-project.org/)
+
+## User Interface
+
+![Caret Lab Help](figures/ShinyCaretUserInterface.png)
+   
+- Preprocessing options and Caret model selection at left
+- 3 dynamic panels and static help panel on right
+
+## Comparison of Caret Models
+
+**ConfusionMatrix** panel shows confusion matrix, accuracy, sensitivity, specificity and other statistics.  
+
+Let's look at % Accuracy.
+
+```{r, echo=FALSE}
+accuracy <- c(83.3, 79.4, 82.5, 85.3, 84.5, 81.4)
+models   <- c("lda", "rpart", "treebag", "gbm", "rf", "svmPoly")
+
+barplot(accuracy, las=1, names.arg=models, ylim=c(0,90),
+        main="Comparison of Caret Models:  % Accuracy",
+        xlab="caret package model", ylab="% Accuracy")
+text(0.5 + 1.2 * 0:(length(models)-1), accuracy+3, accuracy, adj=0)
+mtext("Defaults used for all other selections")        
+```
+
+## Online help
+
+![Caret Lab Help](figures/ShinyCaretHelp.png)
+
+

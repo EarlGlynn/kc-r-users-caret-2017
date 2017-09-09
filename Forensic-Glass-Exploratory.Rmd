@@ -1,0 +1,149 @@
+---
+title: "Forensic Glass:  Exploratory Data Analysis"
+output: html_document
+---
+
+efg, 2017-09-04
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Setup
+
+```{r}
+time.1 <- Sys.time()
+```
+
+Required packages
+
+```{r, comment=NA, message=FALSE, warning=FALSE}
+library(MASS)    # fgl
+library(dplyr)   # select
+library(caret)   # featurePlot
+```
+
+## Forensic Glass Data
+
+See help(fgl) after loading MASS package.
+
+RI = refractive index
+
+Percentages by weight of oxides:
+Na, Mg, Al, Si, K, Ca, Ba, Fe
+
+type
+
+* window float glass (WinF: 70), 
+* window non-float glass (WinNF: 76), 
+* vehicle window glass (Veh: 17), 
+* containers (Con: 13), 
+* tableware (Tabl: 9)
+* vehicle headlamps (Head: 29).
+
+
+```{r, comment=NA}
+rawData <- fgl
+str(rawData)
+```
+
+```{r, comment=NA}
+head(rawData)
+```
+
+
+```{r, comment=NA}
+table(rawData$type)
+```
+
+```{r, comment=NA}
+type    <- rawData$type
+rawData <- rawData %>% select(-type)
+```
+
+## First Look at Raw Data
+
+```{r, comment=NA, fig.width=9, fig.height=9}
+library(RColorBrewer)
+colorSet <-brewer.pal(6, "Set2")   # Qualitative palette
+
+par(mfrow=c(3,3))
+plot(RI ~ type, data=fgl, col=colorSet, main="RI:  Refractive Index")
+plot(Al ~ type, data=fgl, col=colorSet, main="Al:  Aluminum")
+plot(Na ~ type, data=fgl, col=colorSet, main="Na:  Sodium")
+plot(Mg ~ type, data=fgl, col=colorSet, main="Mg:  Magnesium")
+plot(Ba ~ type, data=fgl, col=colorSet, main="Ba:  Barium")
+plot(Si ~ type, data=fgl, col=colorSet, main="Si:  Silicon")
+plot(K ~  type, data=fgl, col=colorSet, main="K:  Potasium")
+plot(Ca ~ type, data=fgl, col=colorSet, main="Ca:  Calcium")
+plot(Fe ~ type, data=fgl, col=colorSet, main="Fe:  Iron")
+```
+
+## Standardize Data
+
+```{r, comment=NA}
+transformSetup <- preProcess(rawData, method=c("center", "scale"))
+centeredScaled <- predict(transformSetup, rawData)
+```
+
+## Data Visualization with Caret
+
+Wrapper for Lattice Plotting of Predictor Variables
+
+See [caret Github Page:  Visualizations](http://topepo.github.io/caret/visualizations.html)
+
+### Boxplots
+
+See [Box plot](https://en.wikipedia.org/wiki/Box_plot) at Wikipedia.
+
+```{r, fig.width=12, fig.height=12}
+featurePlot(centeredScaled, type, "box", main="Boxplots")
+```
+
+### Strip Plots
+
+```{r, fig.width=12, fig.height=12}
+featurePlot(centeredScaled, type,"strip", jitter=TRUE, main="Strip Plots")
+```
+
+### Pairs Plots
+
+```{r, fig.width=12, fig.height=12}
+featurePlot(centeredScaled, type, "pairs", auto.key=list(columns=6), main="Pairs Plots")
+```
+
+### Ellipse Plots
+
+[This page](https://rstudio-pubs-static.s3.amazonaws.com/4991_14f069b28daf4d3187f3b5ae40051473.html) shows better examples of what ellipse plots show.
+
+```{r, fig.width=12, fig.height=12}
+featurePlot(centeredScaled, type, "ellipse", auto.key=list(columns=6), main="Ellipse Plots")
+```
+
+### Density Plots
+
+See [Density estimation]().
+
+```{r, fig.width=12, fig.height=12}
+featurePlot(centeredScaled, type, "density", 
+            scales=list(x=list(relation="free"), 
+                        y=list(relation="free")),
+            auto.key=list(columns=6), 
+            main="Density Plots")
+```
+
+```{r, comment=NA, echo=FALSE}
+time.2 <- Sys.time()
+processingTime <- paste("Processing time:", sprintf("%.1f",
+                        as.numeric(difftime(time.2, time.1, units="secs"))), "sec\n")
+```
+
+`r processingTime`
+`r format(time.2, "%Y-%m-%d %H:%M:%S")`        
+
+## References
+
+Data also available through [UCI Repository](https://archive.ics.uci.edu/ml/datasets/glass+identification).
+
+Forensic Glass data analysis is discussed in book [Data Mining and Business Analytics with R](https://books.google.com/books?id=gLnuxUmk5eEC&pg=PT133&lpg=PT133&dq=mass+forensic+glass+dataset&source=bl&ots=bQZsVGW1Xp&sig=zcxIBdyNXbLEdqz3XJNiaipIEus&hl=en&sa=X&ved=0ahUKEwip16CilYPWAhUM5IMKHVqACaIQ6AEISDAD#v=onepage&q=mass%20forensic%20glass%20dataset&f=false).
+

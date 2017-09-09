@@ -1,0 +1,220 @@
+---
+title: "Forensic Glass:  Support Vector Machine -- Radial Basis Function Kernel"
+output: html_document
+---
+
+efg, 2017-09-04
+
+[Support Vector Machine -- Radial Basis Function Kernel](https://www.jstatsoft.org/article/view/v015i09/v15i09.pdf) using [kernlab package](https://cran.r-project.org/web/packages/kernlab/kernlab.pdf) with [caret](http://topepo.github.io/caret/index.html).
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Setup
+
+```{r}
+time.1 <- Sys.time()
+```
+
+### Required packages
+
+```{r, comment=NA, message=FALSE, warning=FALSE}
+library(MASS)          # fgl data
+library(dplyr)         # select
+library(caret)         # createDataParition, nearZeroVar
+library(doParallel)    # registerDoParallel  
+library(kernlab)
+```
+
+### Forensic Glass Data
+
+```{r, comment=NA}
+rawData <- fgl
+dim(rawData)
+```
+
+```{r, comment=NA}
+table(rawData$type)
+prop.table( table(rawData$type) )
+```
+
+### Caret info about svmRadial model
+
+```{r, comment=NA}
+getModelInfo()$svmRadial$type
+```
+
+```{r, comment=NA}
+getModelInfo()$libsvm$parameters
+```
+
+```{r, comment=NA}
+getModelInfo()$svmRadial$library
+```
+
+```{r, comment=NA}
+getModelInfo()$svmRadial$grid
+```
+
+### Define train and test datasets
+
+```{r, comment=NA}
+set.seed(71)
+
+trainSetIndices <- createDataPartition(rawData$type, p=0.70, list=FALSE)
+
+trainSet <- rawData[ trainSetIndices, ]
+testSet  <- rawData[-trainSetIndices, ]
+```
+
+Assume dependent variable is last column of trainSet and testSet here.
+
+```{r, comment=NA}
+nrow(trainSet)
+nrow(testSet)
+```
+
+
+```{r, comment=NA}
+table(trainSet$type) 
+table(testSet$type)
+```
+
+
+```{r, comment=NA}
+prop.table( table(trainSet$type) )
+prop.table( table(testSet$type) )
+```
+
+#### Remove near-zero variance predictors
+
+```{r, comment=NA}
+nearZero <- nearZeroVar(trainSet, saveMetrics=TRUE)
+nearZero
+```
+Eliminate variables that have zero variance (zeroVar), or variables with near zero variance (nzv).  
+
+In this case, we'll remove any near zero variance variables.
+
+```{r, comment=NA}
+nzvCount <- sum(nearZero$nzv)
+if (nzvCount > 0)
+{
+  trainSet <- trainSet[, !nearZero$nzv]  
+  testSet  <- testSet[,  !nearZero$nzv]  # make same change to testSet
+}
+```
+
+#### Remove variables with high correlation to others
+
+```{r, comment=NA}
+HIGH_CORRELATION_CUTOFF <- 0.80
+corMatrix <- trainSet %>% select(-type) %>% cor   # create correlation matrix
+
+corHigh <- findCorrelation(corMatrix, HIGH_CORRELATION_CUTOFF)
+if (length(corHigh) > 0)
+{
+  cat("Removing highly-correlated variable(s): ", names(trainSet)[corHigh])
+  trainSet <- trainSet[, -corHigh]  
+  testSet  <- testSet[,  -corHigh]  
+}
+```
+
+#### Remove variables with linear dependencies
+
+QR decomposition is used to determine if the matrix is full rank.  Sets of columns that are involved in the dependencies are identified.
+
+```{r, comment=NA}
+linearCombos <- findLinearCombos(trainSet %>% select(-type))
+if (length(linearCombos$remove) > 0)
+{
+  cat("Removing linear dependencies: ", names(trainSet)[linearCombos$remove])
+  trainSet <- trainSet[, -linearCombos$remove]  
+  testSet  <- testSet[,  -linearCombos$remove]  
+}
+```
+
+### Setup parallel processing
+
+```{r, comment=NA}
+rCluster <- makePSOCKcluster(6)   # use 6 cores
+registerDoParallel(rCluster)  
+```
+
+## SVM Classifier using Non-Linear Kernel -- svmRadial 
+
+```{r, comment=NA}
+set.seed(29)
+CVfolds   <-  5  # 5-fold cross validation (not enough data for 10 fold here)
+CVrepeats <- 10  # repeat 10 times
+
+trainControlParms <- trainControl(method = "repeatedcv",  # repeated cross validation
+                                  number  = CVfolds,    
+                                  repeats = CVrepeats,
+                                  classProbs = TRUE,        # Estimate class probabilities
+                                  summaryFunction = defaultSummary)
+
+fit <- train(type ~ ., data=trainSet,
+             preProcess = c("center", "scale"),
+             method = "svmRadial",
+             metric = "Kappa",
+             trControl = trainControlParms)
+
+stopCluster(rCluster)
+```
+
+```{r, comment=NA}
+print(fit$finalModel)
+```
+
+```{r, comment=NA}
+summary(fit$finalModel)
+```
+
+```{r, comment=NA}
+print(fit)
+```
+
+### Variable Importance
+
+See ?varImp
+
+```{r, comment=NA, fig.width=8, fig.height=6}
+plot( varImp(fit), main="Variable Importance" )
+```
+
+### Results on Train Set (In Sample)
+
+Overly optimistic results for generalization
+
+```{r, comment=NA}
+options(width=120)
+InSample  <- predict(fit, newdata=trainSet)
+InSampleConfusion <- confusionMatrix(trainSet$type, InSample)
+print(InSampleConfusion)   
+```
+
+### Results on Test Set (Out of Sample)
+
+More realistic results on predictions with new data
+
+```{r, comment=NA}
+options(width=120)
+OutOfSample  <- predict(fit, newdata=testSet)
+confusion <- confusionMatrix(testSet$type, OutOfSample)
+print(confusion)   
+```
+
+```{r, comment=NA, echo=FALSE}
+time.2 <- Sys.time()
+processingTime <- paste("Processing time:", sprintf("%.1f",
+                        as.numeric(difftime(time.2, time.1, units="secs"))), "sec\n")
+```
+
+`r processingTime`
+`r format(time.2, "%Y-%m-%d %H:%M:%S")`   
+
+## References
+
+* [Support Vector Machine Classifier Implementation in R with caret package](http://dataaspirant.com/2017/01/19/support-vector-machine-classifier-implementation-r-caret-package/), Rahul Saxena, 2017.

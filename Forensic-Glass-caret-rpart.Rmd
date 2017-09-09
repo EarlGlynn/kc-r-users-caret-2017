@@ -1,0 +1,169 @@
+---
+title: "Forensic Glass:  Classification and Regression Trees"
+output: html_document
+---
+
+efg, 2017-09-04
+
+[Classification and Regression Trees](http://www.stat.wisc.edu/~loh/treeprogs/guide/wires11.pdf) using [rpart package](https://cran.r-project.org/web/packages/rpart/rpart.pdf) with [caret](http://topepo.github.io/caret/index.html).
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Setup
+
+```{r}
+time.1 <- Sys.time()
+```
+
+### Required packages
+
+```{r, comment=NA, message=FALSE, warning=FALSE}
+library(MASS)          # fgl data
+library(dplyr)         # select
+library(caret)         # createDataParition, nearZeroVar
+library(doParallel)    # registerDoParallel  
+library(rpart)
+library(rpart.plot)   
+```
+
+### Forensic Glass Data
+
+```{r, comment=NA}
+rawData <- fgl
+dim(rawData)
+```
+
+```{r, comment=NA}
+table(rawData$type)
+prop.table( table(rawData$type) )
+```
+
+### Caret info about rpart model
+
+```{r, comment=NA}
+getModelInfo()$rpart$type
+```
+
+```{r, comment=NA}
+getModelInfo()$rpart$parameters
+```
+
+
+```{r, comment=NA}
+getModelInfo()$rpart$library
+```
+
+```{r, comment=NA}
+getModelInfo()$rpart$grid
+```
+
+### Define train and test datasets
+
+```{r, comment=NA}
+set.seed(71)
+
+trainSetIndices <- createDataPartition(rawData$type, p=0.70, list=FALSE)
+
+trainSet <- rawData[ trainSetIndices, ]
+testSet  <- rawData[-trainSetIndices, ]
+```
+
+Assume dependent variable is last column of trainSet and testSet here.
+
+```{r, comment=NA}
+nrow(trainSet)
+nrow(testSet)
+```
+
+```{r, comment=NA}
+prop.table( table(trainSet$type) )
+prop.table( table(testSet$type) )
+```
+### Setup parallel processing
+
+```{r, comment=NA}
+rCluster <- makePSOCKcluster(6)   # use 6 cores
+registerDoParallel(rCluster)  
+```
+
+## Classification and Regression Trees
+
+```{r, comment=NA, message=FALSE, warning=FALSE}
+set.seed(29)
+CVfolds   <-  5  # 5-fold cross validation (not enough data for 10 fold here)
+CVrepeats <- 10  # repeat 10 times
+
+trainControlParms <- trainControl(method = "repeatedcv",  # repeated cross validation
+                                  number  = CVfolds,    
+                                  repeats = CVrepeats,  
+                                  classProbs=TRUE,        # Estimate class probabilities
+                                  summaryFunction = defaultSummary)
+
+fit <- train(type ~ ., data=trainSet,
+             method = "rpart", 
+             metric = "Kappa",                 # helps with imbalance
+             trControl = trainControlParms)
+
+stopCluster(rCluster)
+```
+
+```{r, comment=NA}
+print(fit$finalModel)
+```
+
+```{r, comment=NA, fig.width=8, fig.height=8}
+rpart.plot(fit$finalModel)
+```
+
+```{r, comment=NA}
+print(fit)
+```
+
+```{r, comment=NA}
+plot(fit)
+```
+
+### Variable Importance
+
+See ?varImp
+
+```{r, comment=NA, fig.width=8, fig.height=6}
+plot( varImp(fit), main="Variable Importance" )
+```
+
+### Results on Train Set (In Sample)
+
+Overly optimistic results for generalization
+
+```{r, comment=NA}
+options(width=120)
+InSample  <- predict(fit, newdata=trainSet)
+InSampleConfusion <- confusionMatrix(trainSet$type, InSample)
+print(InSampleConfusion)   
+```
+
+### Results on Test Set (Out of Sample)
+
+More realistic results on predictions with new data
+
+```{r, comment=NA}
+options(width=120)
+OutOfSample  <- predict(fit, newdata=testSet)
+confusion <- confusionMatrix(testSet$type, OutOfSample)
+print(confusion)   
+```
+
+```{r, comment=NA, echo=FALSE}
+time.2 <- Sys.time()
+processingTime <- paste("Processing time:", sprintf("%.1f",
+                        as.numeric(difftime(time.2, time.1, units="secs"))), "sec\n")
+```
+
+`r processingTime`
+`r format(time.2, "%Y-%m-%d %H:%M:%S")`   
+
+## References
+
+* [An Introduction to Recursive Partitioning Using the RPART Routines](https://cran.r-project.org/web/packages/rpart/vignettes/longintro.pdf), Terry M Therneau,et al, 2017.

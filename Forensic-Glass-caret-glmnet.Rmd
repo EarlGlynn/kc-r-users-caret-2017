@@ -1,0 +1,181 @@
+---
+title: "Forensic Glass:  glmnet:  LASSO, Ridge, and Elastic Net"
+output: html_document
+---
+
+efg, 2017-09-06
+
+[LASSO, Ridge, and Elastic Net](https://web.stanford.edu/~hastie/glmnet/glmnet_alpha.html) using [R glmnet package](https://cran.r-project.org/web/packages/glmnet/glmnet.pdf) with [caret](http://topepo.github.io/caret/index.html).
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Setup
+
+```{r}
+time.1 <- Sys.time()
+```
+
+### Required packages
+
+```{r, comment=NA, message=FALSE, warning=FALSE}
+library(MASS)          # fgl data
+library(dplyr)         # select
+library(caret)         # createDataParition, nearZeroVar
+library(doParallel)    # registerDoParallel  
+library(glmnet)
+```
+
+### Forensic Glass Data
+
+```{r, comment=NA}
+rawData <- fgl
+dim(rawData)
+```
+
+```{r, comment=NA}
+table(rawData$type)
+prop.table( table(rawData$type) )
+```
+
+### Caret info about glmnet model
+
+```{r, comment=NA}
+getModelInfo()$glmnet$type
+```
+
+```{r, comment=NA}
+getModelInfo()$glmnet$parameters
+```
+
+```{r, comment=NA}
+getModelInfo()$glmnet$library
+```
+
+```{r, comment=NA}
+getModelInfo()$glmnet$grid
+```
+
+### Define train and test datasets
+
+```{r, comment=NA}
+set.seed(71)
+
+trainSetIndices <- createDataPartition(rawData$type, p=0.70, list=FALSE)
+
+trainSet <- rawData[ trainSetIndices, ]
+testSet  <- rawData[-trainSetIndices, ]
+```
+
+Assume dependent variable is last column of trainSet and testSet here.
+
+```{r, comment=NA}
+nrow(trainSet)
+nrow(testSet)
+```
+
+
+```{r, comment=NA}
+table(trainSet$type) 
+table(testSet$type)
+```
+
+
+```{r, comment=NA}
+prop.table( table(trainSet$type) )
+prop.table( table(testSet$type) )
+```
+
+### Setup parallel processing
+
+```{r, comment=NA}
+rCluster <- makePSOCKcluster(6)   # use 6 cores
+registerDoParallel(rCluster)  
+```
+
+## glmnet (lasso and elastic-net regularization)
+
+```{r, comment=NA}
+set.seed(29)
+CVfolds   <-  5  # 5-fold cross validation (not enough data for 10 fold here)
+CVrepeats <- 10  # repeat 10 times
+
+# Used createMultiFolds to study 
+indexFolds <- createMultiFolds(trainSet$type, CVfolds, CVrepeats)  # for repeated CV
+
+trainControlParms <- trainControl(method = "repeatedcv",  # repeated cross validation
+                                  number  = CVfolds,    
+                                  repeats = CVrepeats,  
+                                  index   = indexFolds,
+                                  classProbs = TRUE,      # Estimate class probabilities
+                                  summaryFunction = defaultSummary)
+
+fit <- train(type ~ ., data=trainSet,
+             preProcess = c("center", "scale"),
+             method = "glmnet",
+             metric = "Kappa",
+             trControl = trainControlParms)
+
+stopCluster(rCluster)
+```
+
+```{r, comment=NA}
+plot(fit$finalModel)
+```
+
+
+```{r, comment=NA}
+summary(fit$finalModel)
+```
+
+```{r, comment=NA}
+print(fit)
+```
+
+### Variable Importance
+
+See ?varImp
+
+```{r, comment=NA, fig.width=8, fig.height=6}
+plot( varImp(fit), main="Variable Importance" )
+```
+
+### Results on Train Set (In Sample)
+
+Overly optimistic results for generalization
+
+```{r, comment=NA}
+options(width=120)
+InSample  <- predict(fit, newdata=trainSet)
+InSampleConfusion <- confusionMatrix(trainSet$type, InSample)
+print(InSampleConfusion)   
+```
+
+### Results on Test Set (Out of Sample)
+
+More realistic results on predictions with new data
+
+```{r, comment=NA}
+options(width=120)
+OutOfSample  <- predict(fit, newdata=testSet)
+confusion <- confusionMatrix(testSet$type, OutOfSample)
+print(confusion)   
+```
+
+```{r, comment=NA, echo=FALSE}
+time.2 <- Sys.time()
+processingTime <- paste("Processing time:", sprintf("%.1f",
+                        as.numeric(difftime(time.2, time.1, units="secs"))), "sec\n")
+```
+
+`r processingTime`
+`r format(time.2, "%Y-%m-%d %H:%M:%S")`   
+
+## References
+
+* [Glmnet Vignette](https://web.stanford.edu/~hastie/glmnet/glmnet_alpha.html), Trevor Hastie and Junyang Qian, 2014.
+
+* [Trevor Hastie presents glmnet: lasso and elastic-net regularization in R](https://www.r-bloggers.com/trevor-hastie-presents-glmnet-lasso-and-elastic-net-regularization-in-r/),  R Bloggers, 2013.
+
+* [An Introduction to Statistical Learning with Applications in R](http://www-bcf.usc.edu/~gareth/ISL/), Gareth James, Daniela Witten, Trevor Hastie, Robert Tibshirani, 2013

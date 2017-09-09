@@ -1,0 +1,141 @@
+---
+title: "Forensic Glass:  Heatmap and Hierarchical Clustering"
+output: html_document
+---
+
+efg, 2017-09-02
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Setup
+
+```{r, comment=NA}
+time.1 <- Sys.time()
+```
+
+Required packages
+
+```{r, comment=NA, message=FALSE, warning=FALSE}
+library(MASS)         # fgl data
+library(NMF)          # aheatmap
+library(dplyr)        # select
+library(doParallel)   # parallel processing:  registerDoParallel
+library(pvclust)      # pvclust
+```
+
+Forensic Glass Data
+
+```{r, comment=NA}
+rawData <- fgl
+rownames(rawData) <- make.names( as.character(rawData$type), unique=TRUE )  # unique rownames
+rowLabel <- rawData["type"]   # data.frame with single column "type"
+rawData  <- rawData %>% select(-type) %>% as.matrix()
+
+# Mean=0, StdDev=1
+centeredScaledData <- scale(rawData, center=TRUE, scale=TRUE)
+```
+
+## Heatmap 
+```{r, comment=NA, fig.width=8, fig.height=16}
+colorScale <- colorRampPalette(c("#7F0000","red","#FF7F00","yellow","white",
+                                 "cyan", "#007FFF", "blue","#00007F"))(100)  
+
+aheatmap(centeredScaledData, color=colorScale,       # Diverging Palette
+         Rowv=NA, Colv=NA,                           # no re-ordering of data
+         scale="col", breaks=0,                      # Palette centered on this value
+         annRow=rowLabel, annColors="Dark2",         # Qualitative Palette (RColorBrewer)
+         treeheight=c(100, 100),                     # size of dendrograms
+         fontsize=14, cexCol=1.25, 
+         width=8, height=16)
+```
+
+## Clustering of Predictors and Instances
+
+```{r, comment=NA, fig.width=8, fig.height=16}
+aheatmap(centeredScaledData, color=colorScale,       # Diverging Palette
+         scale="col", breaks=0,                      # Palette centered on this value
+         annRow=rowLabel, annColors="Dark2",         # Qualitative Palette (RColorBrewer)
+         distfun="pearson",                          # start wtih "pearson" or "euclidean"
+         treeheight=c(100, 100),                     # size of dendrograms
+         fontsize=14, cexCol=1.25, 
+         width=8, height=16)
+```
+
+This is a visual view of the problem.  The vertical color bar at the left shows the glass type for the predictors to the right.  What patterns of predictors can be observed for a given glass type?
+
+There are many eqivalent ways to display the [dendrogram](https://en.wikipedia.org/wiki/Dendrogram) trees above.  Any pair of nodes shown connected in the dendrogram can be flipped for an equivalent representation.
+
+The "Head" type formed a tight cluster at the top, but other types do not appear in such tight clusters.
+
+How reliable are the clusters of predictors shown in the dendrogram at the top? 
+
+### Evaluate Uncertainty in Clustering Predictors
+
+There are many equivalent trees.  How reliable are the branches of predictors if we look at many clusterings?
+
+**pvclust** Algorithm
+
+1. Generated thousands of bootstrap samples by randomly sampling elements of the data
+
+1. Compute hierarchical clustering on each bootstrap copy
+
+1. For each cluster:
+
+* compute the **bootstrap probability (BP)** value which corresponds to the frequency that the cluster is identified in bootstrap copies.
+
+* Compute the **approximately unbiased (AU)** probability values (p-values) by multiscale bootstrap resampling.
+
+```{r, comment=NA, message=FALSE, warning=FALSE}
+rCluster <- makePSOCKcluster(6)   # use 6 cores
+registerDoParallel(rCluster)
+```
+
+Use nboot=1000 for testing at first, and then use nboot=10000 for smaller error.
+
+```{r, comment=NA, message=FALSE, warning=FALSE}
+pvResult <- pvclust(centeredScaledData,
+                    parallel=TRUE,
+                    method.hclust="ward.D2", method.dist="correlation",
+                    nboot=10000, iseed=19937)
+stopCluster(rCluster)
+```
+
+```{r, comment=NA, fig.width=10, fig.height=8}
+plot(pvResult, cex=0.8, cex.pv=0.7)
+pvrect(pvResult, alpha=0.95)
+```
+
+**Clusters with AU > = 95% are considered to be strongly supported by data.**
+
+*For a cluster with AU p-value > 0.95, the hypothesis that "the cluster does not exist" is rejected with significance level 0.05.*
+
+```{r, comment=NA}
+pvResult
+```
+
+```{r, comment=NA, message=FALSE, warning=FALSE}
+seplot(pvResult)
+```
+
+Investigate any clusters with extremely large standard errors.
+
+```{r, comment=NA, echo=FALSE}
+time.2 <- Sys.time()
+processingTime <- paste("Processing time:", sprintf("%.1f",
+                        as.numeric(difftime(time.2, time.1, units="secs"))), "sec\n")
+```
+
+`r processingTime`
+`r format(time.2, "%Y-%m-%d %H:%M:%S")`         
+
+## References
+
+* [NMF: Algorithms and Framework for Nonnegative Matrix Factorization (NMF)](https://cran.r-project.org/web/packages/NMF/index.html), CRAN.
+
+* [Generating heatmaps for Nonnegative Matrix Factorization](https://cran.r-project.org/web/packages/NMF/vignettes/heatmaps.pdf), CRAN.
+
+* [Pvclust: an R package for assessing the uncertainty in hierarchical clustering](https://www.ncbi.nlm.nih.gov/pubmed/16595560), *Bioinformatics*, 2006.
+
+* [pvclust:  An R package for hierarchical clustering with p-values](http://stat.sys.i.kyoto-u.ac.jp/prog/pvclust/), Ryota Suzuki and Hidetoshi Shimodaira.
