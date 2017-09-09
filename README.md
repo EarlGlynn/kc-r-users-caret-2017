@@ -38,6 +38,6 @@ See the Summary of Results slide for a short description of each example.
 
     Forensic-Glass-Heatmap-Clustering.Rmd and .html:  Views of Forensic Glass data as a heatmap
     Forensic-Glass-SVD.Rmd and .html:  Singular Value Decomposition
-    Forensic-Glass-PCA.Rmd and .html:  Principal Component Analysis
+    Forensic-Glass-PCA.Rmd and .html:  Principal Component Analysis (creates animated GIF with 3D view of first 3 PCs).
 
     Forensic-Glass-Boruta.Rmd and .html:  Boruta 'All Relevant' Variables
