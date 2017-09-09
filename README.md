@@ -41,3 +41,8 @@ See the Summary of Results slide for a short description of each example.
     Forensic-Glass-PCA.Rmd and .html:  Principal Component Analysis (creates animated GIF with 3D view of first 3 PCs).
 
     Forensic-Glass-Boruta.Rmd and .html:  Boruta 'All Relevant' Variables
+
+## Toy Shiny App
+The ShinyCaret folder contains a Shiny app originally created in 2014 for the Johns Hopkins Coursera class, Developing Data Products.
+
+The app is not very practical given the run time for some of the algorithms, but the example shows how caret can be used in a Shiny app.
