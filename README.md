@@ -12,6 +12,7 @@ R Markdown and corresponding HTML files:
 **Forensic-Glass-caret-FILE.Rmd** and **Forensic-Glass-caret-FILE.html**
 
 **FILE**
+
     C50
     glmnet
     glmnet-SMOTE
@@ -27,7 +28,7 @@ R Markdown and corresponding HTML files:
     rpart
     svmRadial
 
-    See the Summary of Results slide for a short description of each example.
+See the Summary of Results slide for a short description of each example.
 
 ## Related Examples
     caret-overview.Rmd and .html:  Caret Model Summary and examples of getting info about particular models.
