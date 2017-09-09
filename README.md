@@ -8,10 +8,10 @@ After giving an overview of the Caret Package, machine learning results using th
     Caret-Machine-Learning.pdf
 
 ## Machine Learning Examples using Caret
-    R Markdown and corresponding HTML files:
-    **Forensic-Glass-caret-FILE.Rmd** and **Forensic-Glass-caret-FILE.html**
+R Markdown and corresponding HTML files:
+**Forensic-Glass-caret-FILE.Rmd** and **Forensic-Glass-caret-FILE.html**
 
-    **FILE**
+**FILE**
     C50
     glmnet
     glmnet-SMOTE
